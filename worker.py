@@ -5,6 +5,9 @@ from src.services.queue import QueueService
 from src.services.ingestion import IngestionService
 
 logging.basicConfig(level=logging.INFO)
+# Suppress noisy docling logs
+logging.getLogger("docling").setLevel(logging.WARNING)
+
 logger = logging.getLogger("worker")
 
 import threading
@@ -18,7 +21,6 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"OK")
 
 def start_health_check():
-    # Render provides 'PORT'. Locally we might use 'WORKER_PORT' to avoid conflict with API.
     # Logic: Use PORT if set (Production/Render), else WORKER_PORT (Local), else 10000.
     port = int(os.getenv("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
@@ -28,8 +30,6 @@ def start_health_check():
     logger.info(f"Health check server listening on port {port}")
 
 async def run():
-    # Start the dummy server to satisfy Render's port binding requirement
-    start_health_check()
     
     await db.connect()
     logger.info("Worker started.")
@@ -58,4 +58,6 @@ async def run():
             await asyncio.sleep(5)
 
 if __name__ == "__main__":
+    # Start the dummy server immediately to satisfy Render's port binding requirement
+    start_health_check()
     asyncio.run(run())

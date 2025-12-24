@@ -4,12 +4,9 @@ import voyageai
 from src.services.storage import StorageService
 from src.models.files import FileMetadata, Chunk
 from src.config import get_settings
+import logging
 
-# Docling
-try:
-    from docling.document_converter import DocumentConverter
-except ImportError:
-    DocumentConverter = None
+logger = logging.getLogger(__name__)
 
 class IngestionService:
     @staticmethod
@@ -28,16 +25,26 @@ class IngestionService:
                 tmp_path = tmp.name
             
             # 2. Parse (Docling)
+            # Lazy import DocumentConverter to save RAM
+            try:
+                from docling.document_converter import DocumentConverter
+            except ImportError:
+                DocumentConverter = None
+
             if DocumentConverter:
                 converter = DocumentConverter()
                 result = converter.convert(tmp_path)
-                doc = result.document
-                # Simple markdown splitting for reliable chunks
-                # Future: Use HybridChunker properly
-                markdown_content = doc.export_to_markdown()
-                chunks_text = IngestionService._chunk_text(markdown_content)
+                doc = result.document # DoclingDocument
+                
+                # Use our new robust chunker
+                from src.services.chunker import DocumentChunker
+                chunker = DocumentChunker()
+                chunks = chunker.chunk(doc)
+                
+                # Extract text for embedding
+                chunks_text = [c.text for c in chunks]
             else:
-                chunks_text = ["Mock Content 1", "Mock Content 2"]
+                chunks_text = ["Mock Content (Docling missing)"]
 
             # 3. Embed (Voyage AI)
             vo = voyageai.Client(api_key=settings.VOYAGE_API_KEY)
@@ -59,6 +66,7 @@ class IngestionService:
                     ))
                 
                 await Chunk.insert_many(chunk_docs)
+                logger.info(f"Successfully created embedding and stored {len(chunk_docs)} chunks for {file_meta.filename}")
 
             file_meta.status = "completed"
             await file_meta.save()
@@ -69,8 +77,3 @@ class IngestionService:
             file_meta.error_message = str(e)
             await file_meta.save()
             raise e
-
-    @staticmethod
-    def _chunk_text(text: str, chunk_size=1000, overlap=200):
-        # Naive chunker
-        return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size-overlap)]
