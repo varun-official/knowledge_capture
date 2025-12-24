@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from typing import List
-import google.generativeai as genai
+
 from src.services.search import SearchService
 from src.config import get_settings
 
@@ -28,23 +28,11 @@ async def chat_endpoint(request: ChatRequest):
     # 2. Context
     context_text = "\n\n".join([f"Source: {r.content}" for r in results[:5]])
     
-    # 3. Gemini Generation
-    genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel(settings.GEMINI_MODEL)
-    
-    prompt = f"""You are a helpful assistant. Use the context below to answer the question.
-    
-    Context:
-    {context_text}
-    
-    Question: {request.query}
-    """
-    
-    # Run in thread
-    import asyncio
-    response = await asyncio.to_thread(model.generate_content, prompt)
+    # 3. Generate Answer
+    from src.services.llm import LLMService
+    answer_text = await LLMService.generate_response(request.query, context_text)
     
     # 4. Response
     sources = [{"content": r.content[:100], "score": r.similarity} for r in results[:5]]
     
-    return ChatResponse(answer=response.text, sources=sources)
+    return ChatResponse(answer=answer_text, sources=sources)
