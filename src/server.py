@@ -22,4 +22,6 @@ if __name__ == "__main__":
     import uvicorn
     import os
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run("src.server:app", host="0.0.0.0", port=port, reload=True)
+    # Only reload locally
+    is_dev = os.getenv("RENDER") is None
+    uvicorn.run("src.server:app", host="0.0.0.0", port=port, reload=is_dev)
