@@ -21,6 +21,16 @@ class StorageService:
         return grid_in._id
 
     @staticmethod
+    async def upload_bytes(filename: str, content: bytes, metadata: dict = None) -> ObjectId:
+        if not db.fs:
+            raise Exception("DB not connected")
+        
+        grid_in = db.fs.open_upload_stream(filename, metadata=metadata)
+        await grid_in.write(content)
+        await grid_in.close()
+        return grid_in._id
+
+    @staticmethod
     async def download_file(file_id: str) -> bytes:
         if not db.fs:
             raise Exception("DB not connected")
