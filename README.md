@@ -18,6 +18,10 @@ Run this in Atlas Search:
       "path": "embedding",
       "numDimensions": 1024,
       "similarity": "cosine"
+    },
+    {
+      "type": "filter",
+      "path": "user_corpus"
     }
   ]
 }
@@ -32,6 +36,10 @@ Run this in Atlas Search:
       "content": {
         "type": "string",
         "analyzer": "lucene.standard"
+      },
+      "user_corpus": {
+        "type": "string",
+        "analyzer": "lucene.keyword"
       }
     }
   }

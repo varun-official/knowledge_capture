@@ -20,17 +20,21 @@ class SearchService:
         return vo.embed([text], model=settings.VOYAGE_MODEL, input_type="query").embeddings[0]
 
     @staticmethod
-    async def vector_search(query_embedding: List[float], limit: int = 20) -> List[SearchResult]:
+    async def vector_search(query_embedding: List[float], user_corpus: str, limit: int = 20) -> List[SearchResult]:
+        search_stage = {
+            "index": "vector_index",
+            "path": "embedding",
+            "queryVector": query_embedding,
+            "numCandidates": 100,
+            "limit": limit
+        }
+        
+        # Add filter if user_corpus provided
+        if user_corpus:
+             search_stage["filter"] = {"user_corpus": {"$eq": user_corpus}}
+
         pipeline = [
-            {
-                "$vectorSearch": {
-                    "index": "vector_index",
-                    "path": "embedding",
-                    "queryVector": query_embedding,
-                    "numCandidates": 100,
-                    "limit": limit
-                }
-            },
+            {"$vectorSearch": search_stage},
             {
                 "$project": {"_id": 1, "document_id": 1, "content": 1, "metadata": 1, "score": {"$meta": "vectorSearchScore"}}
             }
@@ -52,12 +56,24 @@ class SearchService:
         return results
 
     @staticmethod
-    async def keyword_search(query: str, limit: int = 20) -> List[SearchResult]:
+    async def keyword_search(query: str, user_corpus: str, limit: int = 20) -> List[SearchResult]:
+        search_operator = {
+            "text": {"query": query, "path": "content"}
+        }
+        
+        if user_corpus:
+            search_operator = {
+                "compound": {
+                    "must": [{"text": {"query": query, "path": "content"}}],
+                    "filter": [{"text": {"query": user_corpus, "path": "user_corpus"}}]
+                }
+            }
+
         pipeline = [
             {
                 "$search": {
                     "index": "text_index",
-                    "text": {"query": query, "path": "content"}
+                    **search_operator
                 }
             },
             {"$limit": limit},
@@ -93,8 +109,8 @@ class SearchService:
         return sorted(rrf_map.values(), key=lambda x: x.similarity, reverse=True)
 
     @staticmethod
-    async def hybrid_search(query: str) -> List[SearchResult]:
-        print(f"DEBUG: Starting Hybrid Search for query: '{query}'")
+    async def hybrid_search(query: str, user_corpus: str = None) -> List[SearchResult]:
+        print(f"DEBUG: Starting Hybrid Search for query: '{query}' in corpus: '{user_corpus}'")
         
         # Sync embedding call (Voyage is sync client) wrapped if needed
         query_vec = await asyncio.to_thread(SearchService.get_embedding, query)
@@ -102,8 +118,8 @@ class SearchService:
         
         # Parallel search
         vec_res, kw_res = await asyncio.gather(
-            SearchService.vector_search(query_vec),
-            SearchService.keyword_search(query)
+            SearchService.vector_search(query_vec, user_corpus),
+            SearchService.keyword_search(query, user_corpus)
         )
         
         print(f"DEBUG: Vector Search Results: {len(vec_res)}")
@@ -119,3 +135,14 @@ class SearchService:
         print(f"DEBUG: Final Fused Results: {len(final_results)}")
         
         return final_results
+
+    @staticmethod
+    async def search(query: str, user_corpus: str, strategy: str = "vector") -> List[SearchResult]:
+        if strategy == "hybrid":
+            return await SearchService.hybrid_search(query, user_corpus)
+        elif strategy == "keyword":
+            return await SearchService.keyword_search(query, user_corpus)
+        else:
+            # Default to vector
+            query_vec = await asyncio.to_thread(SearchService.get_embedding, query)
+            return await SearchService.vector_search(query_vec, user_corpus)

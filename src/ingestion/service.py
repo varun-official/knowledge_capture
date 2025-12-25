@@ -37,7 +37,7 @@ class IngestionService:
                 doc = result.document # DoclingDocument
                 
                 # Use our new robust chunker
-                from src.services.chunker import DocumentChunker
+                from src.ingestion.chunker import DocumentChunker
                 chunker = DocumentChunker()
                 chunks = chunker.chunk(doc)
                 
@@ -58,7 +58,8 @@ class IngestionService:
                 for i, text in enumerate(chunks_text):
                     chunk_docs.append(Chunk(
                         document_id=str(file_meta.id),
-                        project_id=file_meta.project_id,
+                        user_corpus=file_meta.user_corpus,
+                        user_email=file_meta.user_email,
                         chunk_index=i,
                         content=text,
                         embedding=embeddings[i],

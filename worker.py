@@ -2,7 +2,7 @@ import asyncio
 import logging
 from src.db.mongo import db
 from src.services.queue import QueueService
-from src.services.ingestion import IngestionService
+from src.ingestion.service import IngestionService
 
 logging.basicConfig(level=logging.INFO)
 # Suppress noisy docling logs

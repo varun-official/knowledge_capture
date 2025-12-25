@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 class FileMetadata(Document):
-    project_id: str
+    user_corpus: str
+    user_email: str
     filename: str
     gridfs_id: str
     file_size: int
@@ -18,7 +19,8 @@ class FileMetadata(Document):
 
 class Chunk(Document):
     document_id: str # Ref to FileMetadata
-    project_id: str
+    user_corpus: str
+    user_email: str
     chunk_index: int
     content: str
     embedding: List[float] # Voyage-3 (1024 dims)

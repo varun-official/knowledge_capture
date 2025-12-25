@@ -2,14 +2,16 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from typing import List
 
-from src.services.search import SearchService
+from src.services.llm import LLMService
+from src.retrieval.service import SearchService
 from src.config import get_settings
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 class ChatRequest(BaseModel):
     query: str
-    project_id: str
+    user_email: str
+    rag_strategy: str = "vector" # vector, keyword, hybrid
 
 class ChatResponse(BaseModel):
     answer: str
@@ -20,7 +22,12 @@ async def chat_endpoint(request: ChatRequest):
     settings = get_settings()
     
     # 1. Retrieval
-    results = await SearchService.hybrid_search(request.query)
+    # user_email acts as the corpus identifier
+    results = await SearchService.search(
+        query=request.query, 
+        user_corpus=request.user_email, 
+        strategy=request.rag_strategy
+    )
     
     if not results:
         return ChatResponse(answer="No info found.", sources=[])

@@ -7,13 +7,18 @@ from typing import List
 router = APIRouter(prefix="/files", tags=["Files"])
 
 @router.post("/upload")
-async def upload_file(project_id: str = Form(...), file: UploadFile = File(...)):
+async def upload_file(
+    user_email: str = Form(...),
+    file: UploadFile = File(...)
+):
     # 1. Store
-    gridfs_id = await StorageService.upload_file(file, metadata={"project_id": project_id})
+    # Use user_email as the corpus identifier
+    gridfs_id = await StorageService.upload_file(file, metadata={"user_corpus": user_email, "user_email": user_email})
     
     # 2. Meta
     file_doc = FileMetadata(
-        project_id=project_id,
+        user_corpus=user_email,
+        user_email=user_email,
         filename=file.filename,
         gridfs_id=str(gridfs_id),
         file_size=file.size or 0,
