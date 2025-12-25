@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 import voyageai
 import asyncio
+from src.services.llm import LLMService
 
 class SearchResult(BaseModel):
     chunk_id: str
@@ -137,8 +138,99 @@ class SearchService:
         return final_results
 
     @staticmethod
+    async def generate_query_variations(query: str, n: int = 2) -> List[str]:
+        prompt = f"Generate {n} alternative ways to phrase this question for document search. Use different keywords and synonyms while maintaining the same intent. Return exactly {n} variations, one per line."
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"Query: {query}"}
+        ]
+        
+        response = await LLMService.get_response(messages)
+        variations = [line.strip() for line in response.split("\n") if line.strip()]
+        
+        # Ensure we have at least the original query
+        return [query] + variations[:n]
+
+    @staticmethod
+    async def multi_query_vector_search(query: str, user_corpus: str) -> List[SearchResult]:
+        print(f"DEBUG: Generating variations for vector search: '{query}'")
+        queries = await SearchService.generate_query_variations(query)
+        print(f"DEBUG: Generated variations: {queries}")
+        
+        # Parallel search
+        tasks = [SearchService.vector_search(
+            await asyncio.to_thread(SearchService.get_embedding, q), 
+            user_corpus
+        ) for q in queries]
+        
+        results_lists = await asyncio.gather(*tasks)
+        return SearchService.rrf_fusion(results_lists)[:20]
+
+    @staticmethod
+    async def multi_query_hybrid_search(query: str, user_corpus: str) -> List[SearchResult]:
+        print(f"DEBUG: Generating variations for hybrid search: '{query}'")
+        queries = await SearchService.generate_query_variations(query)
+        
+        # Parallel search
+        tasks = [SearchService.hybrid_search(q, user_corpus) for q in queries]
+        
+        results_lists = await asyncio.gather(*tasks)
+        return SearchService.rrf_fusion(results_lists)[:20]
+
+    @staticmethod
+    async def decompose_query(query: str) -> List[str]:
+        prompt = "Analyze this query. If it consists of multiple distinct sub-questions, extract them (max 3). If it is a single valid question, return it as is. Return distinct queries, one per line."
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"Query: {query}"}
+        ]
+        
+        response = await LLMService.get_response(messages)
+        sub_queries = [line.strip() for line in response.split("\n") if line.strip()]
+        
+        # Fallback if empty
+        if not sub_queries:
+            sub_queries = [query]
+            
+        print(f"DEBUG: Decomposition result: {sub_queries}")
+        return sub_queries
+
+    @staticmethod
+    async def query_decompose_vector_search(query: str, user_corpus: str) -> List[SearchResult]:
+        print(f"DEBUG: Decomposing query for vector search: '{query}'")
+        sub_queries = await SearchService.decompose_query(query)
+        
+        # Parallel search
+        tasks = [SearchService.vector_search(
+            await asyncio.to_thread(SearchService.get_embedding, q), 
+            user_corpus
+        ) for q in sub_queries]
+        
+        results_lists = await asyncio.gather(*tasks)
+        return SearchService.rrf_fusion(results_lists)[:20]
+
+    @staticmethod
+    async def query_decompose_hybrid_search(query: str, user_corpus: str) -> List[SearchResult]:
+        print(f"DEBUG: Decomposing query for hybrid search: '{query}'")
+        sub_queries = await SearchService.decompose_query(query)
+        
+        # Parallel search
+        tasks = [SearchService.hybrid_search(q, user_corpus) for q in sub_queries]
+        
+        results_lists = await asyncio.gather(*tasks)
+        return SearchService.rrf_fusion(results_lists)[:20]
+
+    @staticmethod
     async def search(query: str, user_corpus: str, strategy: str = "vector") -> List[SearchResult]:
-        if strategy == "hybrid":
+        if strategy == "query_decompose_hybrid":
+             return await SearchService.query_decompose_hybrid_search(query, user_corpus)
+        elif strategy == "query_decompose_vector":
+             return await SearchService.query_decompose_vector_search(query, user_corpus)
+        elif strategy == "multi_query_hybrid":
+             return await SearchService.multi_query_hybrid_search(query, user_corpus)
+        elif strategy == "multi_query_vector":
+             return await SearchService.multi_query_vector_search(query, user_corpus)
+        elif strategy == "hybrid":
             return await SearchService.hybrid_search(query, user_corpus)
         elif strategy == "keyword":
             return await SearchService.keyword_search(query, user_corpus)

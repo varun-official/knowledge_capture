@@ -1,20 +1,19 @@
 from litellm import acompletion
 from src.config import get_settings
 
+from typing import List, Dict, Optional
+
 class LLMService:
     @staticmethod
-    async def generate_response(prompt: str, context: str) -> str:
+    async def get_response(messages: List[Dict[str, str]], model: Optional[str] = None) -> str:
         settings = get_settings()
         
         # Ensure correct prefix for LiteLLM
-        model = settings.GEMINI_MODEL
+        if not model:
+            model = settings.GEMINI_MODEL
+            
         if "gemini" in model.lower() and not model.startswith("gemini/"):
             model = f"gemini/{model}"
-
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant. Use the context provided to answer the user's question. If the answer is not in the context, say so."},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {prompt}"}
-        ]
 
         try:
             response = await acompletion(
