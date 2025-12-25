@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from src.services.storage import StorageService
 from src.services.queue import QueueService
-from src.models.files import FileMetadata
+from src.models.files import FileMetadata, Chunk
 from typing import List
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -75,3 +75,32 @@ async def ingest_qa_pairs(request: QAIngestRequest):
     await QueueService.push_task("ingestion", {"file_id": str(file_doc.id)})
     
     return {"message": "Queued Q&A Ingestion", "file_id": str(file_doc.id)}
+
+@router.get("/list")
+async def list_files(user_email: str):
+    files = await FileMetadata.find(FileMetadata.user_email == user_email).sort("-created_at").to_list()
+    return list(files)
+
+@router.delete("/{file_id}")
+async def delete_file(file_id: str, user_email: str):
+    # 1. Verify ownership
+    file_doc = await FileMetadata.get(file_id)
+    if not file_doc:
+        return {"error": "File not found"}
+    if file_doc.user_email != user_email:
+        return {"error": "Unauthorized"}
+        
+    # 2. Delete from GridFS
+    if file_doc.gridfs_id:
+        try:
+            await StorageService.delete_file(file_doc.gridfs_id)
+        except Exception as e:
+            print(f"Error deleting from GridFS: {e}")
+    
+    # 3. Delete Chunks
+    await Chunk.find(Chunk.document_id == file_id).delete()
+    
+    # 4. Delete Meta
+    await file_doc.delete()
+    
+    return {"message": "File and chunks deleted"}

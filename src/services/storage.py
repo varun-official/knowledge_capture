@@ -31,6 +31,12 @@ class StorageService:
         return grid_in._id
 
     @staticmethod
+    async def delete_file(file_id: str):
+        if not db.fs:
+            raise Exception("DB not connected")
+        await db.fs.delete(ObjectId(file_id))
+
+    @staticmethod
     async def download_file(file_id: str) -> bytes:
         if not db.fs:
             raise Exception("DB not connected")
