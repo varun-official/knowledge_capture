@@ -107,10 +107,40 @@ class SearchService:
                     rrf_map[result.chunk_id] = result
                 rrf_map[result.chunk_id].similarity += 1 / (k + rank)
         
+
+        
         return sorted(rrf_map.values(), key=lambda x: x.similarity, reverse=True)
 
     @staticmethod
-    async def hybrid_search(query: str, user_corpus: str = None) -> List[SearchResult]:
+    def rerank_results(query: str, results: List[SearchResult], top_k: int = 20) -> List[SearchResult]:
+        if not results:
+            return []
+            
+        settings = get_settings()
+        vo = voyageai.Client(api_key=settings.VOYAGE_API_KEY)
+        
+        # Extract content for reranking
+        documents = [r.content for r in results]
+        
+        try:
+            reranking = vo.rerank(query, documents, model=settings.VOYAGE_RERANK_MODEL, top_k=top_k)
+            
+            reranked_results = []
+            for r in reranking.results:
+                # Map back to original result using index
+                original_result = results[r.index]
+                # Update similarity score with reranking score
+                original_result.similarity = r.relevance_score
+                reranked_results.append(original_result)
+                
+            return reranked_results
+        except Exception as e:
+            print(f"ERROR: Reranking failed: {e}")
+            # Fallback to original order/scores if reranking fails
+            return results[:top_k]
+
+    @staticmethod
+    async def hybrid_search(query: str, user_corpus: str = None, limit: int = 20) -> List[SearchResult]:
         print(f"DEBUG: Starting Hybrid Search for query: '{query}' in corpus: '{user_corpus}'")
         
         # Sync embedding call (Voyage is sync client) wrapped if needed
@@ -132,7 +162,7 @@ class SearchService:
              print(f"DEBUG: Top Keyword Match: {kw_res[0].content[:50]}... (Score: {kw_res[0].similarity})")
 
         # Fuse
-        final_results = SearchService.rrf_fusion([vec_res, kw_res])[:20]
+        final_results = SearchService.rrf_fusion([vec_res, kw_res])[:limit]
         print(f"DEBUG: Final Fused Results: {len(final_results)}")
         
         return final_results
@@ -152,7 +182,7 @@ class SearchService:
         return [query] + variations[:n]
 
     @staticmethod
-    async def multi_query_vector_search(query: str, user_corpus: str) -> List[SearchResult]:
+    async def multi_query_vector_search(query: str, user_corpus: str, limit: int = 20) -> List[SearchResult]:
         print(f"DEBUG: Generating variations for vector search: '{query}'")
         queries = await SearchService.generate_query_variations(query)
         print(f"DEBUG: Generated variations: {queries}")
@@ -164,10 +194,10 @@ class SearchService:
         ) for q in queries]
         
         results_lists = await asyncio.gather(*tasks)
-        return SearchService.rrf_fusion(results_lists)[:20]
+        return SearchService.rrf_fusion(results_lists)[:limit]
 
     @staticmethod
-    async def multi_query_hybrid_search(query: str, user_corpus: str) -> List[SearchResult]:
+    async def multi_query_hybrid_search(query: str, user_corpus: str, limit: int = 20) -> List[SearchResult]:
         print(f"DEBUG: Generating variations for hybrid search: '{query}'")
         queries = await SearchService.generate_query_variations(query)
         
@@ -175,7 +205,7 @@ class SearchService:
         tasks = [SearchService.hybrid_search(q, user_corpus) for q in queries]
         
         results_lists = await asyncio.gather(*tasks)
-        return SearchService.rrf_fusion(results_lists)[:20]
+        return SearchService.rrf_fusion(results_lists)[:limit]
 
     @staticmethod
     async def decompose_query(query: str) -> List[str]:
@@ -196,7 +226,7 @@ class SearchService:
         return sub_queries
 
     @staticmethod
-    async def query_decompose_vector_search(query: str, user_corpus: str) -> List[SearchResult]:
+    async def query_decompose_vector_search(query: str, user_corpus: str, limit: int = 20) -> List[SearchResult]:
         print(f"DEBUG: Decomposing query for vector search: '{query}'")
         sub_queries = await SearchService.decompose_query(query)
         
@@ -207,10 +237,10 @@ class SearchService:
         ) for q in sub_queries]
         
         results_lists = await asyncio.gather(*tasks)
-        return SearchService.rrf_fusion(results_lists)[:20]
+        return SearchService.rrf_fusion(results_lists)[:limit]
 
     @staticmethod
-    async def query_decompose_hybrid_search(query: str, user_corpus: str) -> List[SearchResult]:
+    async def query_decompose_hybrid_search(query: str, user_corpus: str, limit: int = 20) -> List[SearchResult]:
         print(f"DEBUG: Decomposing query for hybrid search: '{query}'")
         sub_queries = await SearchService.decompose_query(query)
         
@@ -218,23 +248,35 @@ class SearchService:
         tasks = [SearchService.hybrid_search(q, user_corpus) for q in sub_queries]
         
         results_lists = await asyncio.gather(*tasks)
-        return SearchService.rrf_fusion(results_lists)[:20]
+        return SearchService.rrf_fusion(results_lists)[:limit]
 
     @staticmethod
     async def search(query: str, user_corpus: str, strategy: str = "vector") -> List[SearchResult]:
+        # Fetch more candidates for reranking
+        initial_limit = 50
+        final_limit = 20
+        
+        print(f"DEBUG: Search Strategy: {strategy}, Initial Limit: {initial_limit}")
+
+        results = []
         if strategy == "query_decompose_hybrid":
-             return await SearchService.query_decompose_hybrid_search(query, user_corpus)
+             results = await SearchService.query_decompose_hybrid_search(query, user_corpus, limit=initial_limit)
         elif strategy == "query_decompose_vector":
-             return await SearchService.query_decompose_vector_search(query, user_corpus)
+             results = await SearchService.query_decompose_vector_search(query, user_corpus, limit=initial_limit)
         elif strategy == "multi_query_hybrid":
-             return await SearchService.multi_query_hybrid_search(query, user_corpus)
+             results = await SearchService.multi_query_hybrid_search(query, user_corpus, limit=initial_limit)
         elif strategy == "multi_query_vector":
-             return await SearchService.multi_query_vector_search(query, user_corpus)
+             results = await SearchService.multi_query_vector_search(query, user_corpus, limit=initial_limit)
         elif strategy == "hybrid":
-            return await SearchService.hybrid_search(query, user_corpus)
+            results = await SearchService.hybrid_search(query, user_corpus, limit=initial_limit)
         elif strategy == "keyword":
-            return await SearchService.keyword_search(query, user_corpus)
+            results = await SearchService.keyword_search(query, user_corpus, limit=initial_limit)
         else:
             # Default to vector
             query_vec = await asyncio.to_thread(SearchService.get_embedding, query)
-            return await SearchService.vector_search(query_vec, user_corpus)
+            results = await SearchService.vector_search(query_vec, user_corpus, limit=initial_limit)
+            
+        # Rerank
+        print(f"DEBUG: Reranking {len(results)} results")
+        reranked = await asyncio.to_thread(SearchService.rerank_results, query, results, final_limit)
+        return reranked

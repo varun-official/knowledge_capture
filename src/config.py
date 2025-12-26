@@ -9,10 +9,11 @@ class Settings(BaseSettings):
     # Voyage AI (Embeddings)
     VOYAGE_API_KEY: str
     VOYAGE_MODEL: str = "voyage-3-large" 
+    VOYAGE_RERANK_MODEL: str = "rerank-2.5" 
     
     # Gemini (LLM)
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash-lite"
 
     # API Auth (Simple Admin Key since Clerk is removed)
     ADMIN_API_KEY: str = "secret-admin-key" 
