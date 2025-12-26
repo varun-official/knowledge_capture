@@ -1,7 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends
 from pydantic import BaseModel
 from src.services.storage import StorageService
-from src.services.queue import QueueService
+from src.tasks.ingestion import IngestionTask
 from src.models.files import FileMetadata, Chunk
 from typing import List
 
@@ -29,7 +29,8 @@ async def upload_file(
     await file_doc.insert()
     
     # 3. Queue
-    await QueueService.push_task("ingestion", {"file_id": str(file_doc.id)})
+    task = IngestionTask(file_id=str(file_doc.id))
+    await task.push()
     
     return {"message": "Queued", "file_id": str(file_doc.id)}
 
@@ -72,7 +73,8 @@ async def ingest_qa_pairs(request: QAIngestRequest):
     await file_doc.insert()
     
     # 4. Queue
-    await QueueService.push_task("ingestion", {"file_id": str(file_doc.id)})
+    task = IngestionTask(file_id=str(file_doc.id))
+    await task.push()
     
     return {"message": "Queued Q&A Ingestion", "file_id": str(file_doc.id)}
 

@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn>=0.27.0",
-    "beanie>=1.25.0",
+    "beanie<2.0.0",
     "motor>=3.3.0",
     "pydantic-settings>=2.1.0",
     "docling>=2.4.0",
@@ -15,6 +15,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "python-dotenv>=1.0.0",
     "litellm>=1.80.11",
+    "beanie-batteries-queue>=0.2.0",
 ]
 
 [tool.uv]

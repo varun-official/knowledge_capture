@@ -3,7 +3,7 @@ from beanie import init_beanie
 from src.config import get_settings
 from src.models.core import User, Project
 from src.models.files import FileMetadata, Chunk
-from src.models.task import Task
+from src.tasks.ingestion import IngestionTask
 
 class Database:
     client: AsyncIOMotorClient = None
@@ -16,7 +16,7 @@ class Database:
         
         self.fs = AsyncIOMotorGridFSBucket(db)
         
-        await init_beanie(database=db, document_models=[User, Project, FileMetadata, Chunk, Task])
+        await init_beanie(database=db, document_models=[User, Project, FileMetadata, Chunk, IngestionTask])
         print(f"Connected to MongoDB: {settings.MONGODB_DATABASE}")
 
     async def close(self):
