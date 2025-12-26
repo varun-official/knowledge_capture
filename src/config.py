@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     # Voyage AI (Embeddings)
     VOYAGE_API_KEY: str
     VOYAGE_MODEL: str = "voyage-3-large" 
-    VOYAGE_RERANK_MODEL: str = "rerank-2.5" 
+    VOYAGE_RERANK_MODEL: str = "rerank-2.5"
+    VECTOR_SEARCH_WEIGHT: float = 0.5 
     
     # Gemini (LLM)
     GEMINI_API_KEY: str

@@ -98,16 +98,21 @@ class SearchService:
         return results
 
     @staticmethod
-    def rrf_fusion(results_lists: List[List[SearchResult]], k: int = 60) -> List[SearchResult]:
+    def rrf_fusion(results_lists: List[List[SearchResult]], k: int = 60, weights: List[float] = None) -> List[SearchResult]:
+        if weights is None:
+            weights = [1.0] * len(results_lists)
+            
+        if len(weights) != len(results_lists):
+             raise ValueError("Number of weights must match number of result lists")
+
         rrf_map = {}
-        for results in results_lists:
+        for i, results in enumerate(results_lists):
+            weight = weights[i]
             for rank, result in enumerate(results):
                 if result.chunk_id not in rrf_map:
                     result.similarity = 0
                     rrf_map[result.chunk_id] = result
-                rrf_map[result.chunk_id].similarity += 1 / (k + rank)
-        
-
+                rrf_map[result.chunk_id].similarity += weight * (1 / (k + rank))
         
         return sorted(rrf_map.values(), key=lambda x: x.similarity, reverse=True)
 
@@ -162,7 +167,11 @@ class SearchService:
              print(f"DEBUG: Top Keyword Match: {kw_res[0].content[:50]}... (Score: {kw_res[0].similarity})")
 
         # Fuse
-        final_results = SearchService.rrf_fusion([vec_res, kw_res])[:limit]
+        vector_weight = get_settings().VECTOR_SEARCH_WEIGHT
+        keyword_weight = 1.0 - vector_weight
+        print(f"DEBUG: Fusion Weights - Vector: {vector_weight}, Keyword: {keyword_weight}")
+        
+        final_results = SearchService.rrf_fusion([vec_res, kw_res], weights=[vector_weight, keyword_weight])[:limit]
         print(f"DEBUG: Final Fused Results: {len(final_results)}")
         
         return final_results
