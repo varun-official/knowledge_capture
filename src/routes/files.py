@@ -83,14 +83,21 @@ async def list_files(user_email: str):
     files = await FileMetadata.find(FileMetadata.user_email == user_email).sort("-created_at").to_list()
     return list(files)
 
+from fastapi import HTTPException
+
 @router.delete("/{file_id}")
 async def delete_file(file_id: str, user_email: str):
     # 1. Verify ownership
-    file_doc = await FileMetadata.get(file_id)
+    try:
+        file_doc = await FileMetadata.get(file_id)
+    except Exception:
+         raise HTTPException(status_code=400, detail="Invalid File ID format")
+
     if not file_doc:
-        return {"error": "File not found"}
+        raise HTTPException(status_code=404, detail="File not found")
+        
     if file_doc.user_email != user_email:
-        return {"error": "Unauthorized"}
+        raise HTTPException(status_code=403, detail="Unauthorized")
         
     # 2. Delete from GridFS
     if file_doc.gridfs_id:
